@@ -1,154 +1,123 @@
-{
-  "info": {
-    "title": "Wanderlast",
-    "description": "",
-    "version": "1.0.0"
-  },
-  "tags": [],
-  "paths": {
-    "/flights": {
-      "get": {
-        "summary": "Get flights",
-        "deprecated": false,
-        "description": "",
-        "tags": [],
-        "parameters": [
-          {
-            "name": "origin",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "destination",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "departure",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "adults",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "integer"
-          },
-          {
-            "name": "children",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "integer"
-          },
-          {
-            "name": "infants",
-            "in": "query",
-            "description": "",
-            "required": false,
-            "type": "integer"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "price": {
-                    "type": "object",
-                    "properties": {
-                      "price": {
-                        "type": "string"
-                      },
-                      "currency": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "price",
-                      "currency"
-                    ]
-                  },
-                  "segments": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "departure": {
-                          "$ref": "#/definitions/FlightDetails"
-                        },
-                        "arrival": {
-                          "$ref": "#/definitions/FlightDetails"
-                        }
-                      },
-                      "required": [
-                        "departure",
-                        "arrival"
-                      ]
-                    }
-                  }
-                },
-                "required": [
-                  "price",
-                  "segments"
-                ]
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "properties": {}
-            }
-          },
-          "500": {
-            "description": "Server Error",
-            "schema": {
-              "type": "object",
-              "properties": {}
-            }
-          }
-        },
-        "security": [],
-        "produces": [
-          "application/json",
-          "application/octet-stream"
-        ]
-      }
-    }
-  },
-  "swagger": "2.0",
-  "definitions": {
-    "FlightDetails": {
-      "type": "object",
-      "properties": {
-        "iataCode": {
-          "type": "string"
-        },
-        "at": {
-          "type": "string"
-        },
-        "terminal": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "iataCode",
-        "at"
-      ]
-    }
-  },
-  "securityDefinitions": {},
-  "x-components": {}
-}
+info:
+  title: Wanderlast
+  description: ''
+  version: 1.0.0
+tags: []
+paths:
+  /flights:
+    post:
+      summary: Get flights
+      deprecated: false
+      description: ''
+      tags: []
+      parameters:
+        - name: origin
+          in: query
+          description: ''
+          required: false
+          type: string
+        - name: destination
+          in: query
+          description: ''
+          required: false
+          type: string
+        - name: departure
+          in: query
+          description: ''
+          required: false
+          type: string
+        - name: adults
+          in: query
+          description: ''
+          required: false
+          type: integer
+        - name: children
+          in: query
+          description: ''
+          required: false
+          type: integer
+        - name: infants
+          in: query
+          description: ''
+          required: false
+          type: integer
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                price:
+                  type: object
+                  properties:
+                    price:
+                      type: string
+                    currency:
+                      type: string
+                  required:
+                    - price
+                    - currency
+                segments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      departure:
+                        $ref: '#/definitions/FlightDetails'
+                      arrival:
+                        $ref: '#/definitions/FlightDetails'
+                    required:
+                      - departure
+                      - arrival
+              required:
+                - price
+                - segments
+        '400':
+          description: Bad Request
+          schema:
+            type: object
+            properties: {}
+        '401':
+          description: Unauthorized
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                required:
+                  - message
+                  - status
+            required:
+              - error
+        '500':
+          description: Server Error
+          schema:
+            type: object
+            properties: {}
+      security: []
+      produces:
+        - application/json
+        - application/octet-stream
+swagger: '2.0'
+definitions:
+  FlightDetails:
+    type: object
+    properties:
+      iataCode:
+        type: string
+      at:
+        type: string
+      terminal:
+        type: string
+    required:
+      - iataCode
+      - at
+securityDefinitions: {}
+x-components: {}

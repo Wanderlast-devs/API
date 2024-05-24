@@ -1,16 +1,14 @@
-import {CallableRequest, HttpsError, onCall} from "firebase-functions/v2/https";
-import {Flight, Root} from "../types/flights";
-import {logger} from "firebase-functions";
 import {
-  getDatabase,
-  ref,
-  set,
-  get,
-  child,
-  Database,
-} from "firebase/database";
+  CallableRequest,
+  HttpsError,
+  onCall,
+} from "firebase-functions/v2/https";
+import {logger} from "firebase-functions";
+import {getDatabase, ref, set, get, child, Database} from "firebase/database";
 import {initializeApp} from "firebase/app";
 import firebase_config from "./credentials";
+import {auth_user} from "./middleware/auth";
+import {get_flight_prices} from "./requests/get_flights_price";
 const Amadeus = require("amadeus");
 
 const get_params = (req: CallableRequest, name: string) => req.data[name];
@@ -20,8 +18,17 @@ const is_null = (value: any) =>
 const app = initializeApp(firebase_config);
 
 export const get_flights = onCall(
-  {timeoutSeconds: 1200, region: ["europe-west1"], cors: true},
+  {
+    timeoutSeconds: 1200,
+    region: ["europe-west1"],
+    cors: true,
+  },
   async (request: CallableRequest) => {
+    if (process.env.FUNCTIONS_EMULATOR == undefined) {
+      auth_user(request.auth);
+    } // Auth client
+
+    // Get params from body
     const origin_location = get_params(request, "origin");
     const destination_location = get_params(request, "destination");
     const departure_date = get_params(request, "departure");
@@ -30,6 +37,7 @@ export const get_flights = onCall(
     const infants_num = get_params(request, "infants") || 0;
 
     if (
+      // Check if some params are null
       is_null(origin_location) ||
       is_null(destination_location) ||
       is_null(departure_date) ||
@@ -37,13 +45,15 @@ export const get_flights = onCall(
     ) {
       throw new HttpsError("invalid-argument", "Missing parameters");
     }
+
     const get_doc_name = () =>
       "flights/".concat(
         origin_location + "_" + destination_location + "_" + departure_date
-      );
+      ); // Generate DB cache name
 
     let db: Database | null;
 
+    // Init firebase DB
     try {
       db = getDatabase(
         app,
@@ -59,42 +69,25 @@ export const get_flights = onCall(
       logger.error(error);
     }
 
+    // Init Amadeus
     const amadeus = new Amadeus({
       clientId: process.env.AMADEUS_API_KEY,
       clientSecret: process.env.AMADEUS_API_SECRET,
     });
 
+    // Make request
     try {
-      const result_raw: Root =
-    await amadeus.shopping.flightOffersSearch.get({
-      originLocationCode: origin_location,
-      destinationLocationCode: destination_location,
-      departureDate: departure_date,
-      adults: adults_num,
-      children: children_num,
-      infants: infants_num,
-      max: 10,
-      nonStop: "false",
-    });
-      const final_result: Flight[] = result_raw.data.map((flight) => {
-        return {
-          price: {
-            price: flight.price.total,
-            currency: flight.price.currency,
-          },
-          segments: flight.itineraries
-            .map((itinerary) =>
-              itinerary.segments.map((segment) => {
-                return {
-                  departure: segment.departure,
-                  arrival: segment.arrival,
-                };
-              })
-            )
-            .flat(),
-        };
-      });
+      const final_result = await get_flight_prices(
+        amadeus,
+        origin_location,
+        destination_location,
+        departure_date,
+        adults_num,
+        children_num,
+        infants_num
+      );
       if (db != null) {
+        // Save flight to DB for caching purpose
         await set(
           ref(
             db,
