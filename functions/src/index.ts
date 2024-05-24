@@ -1,7 +1,13 @@
 import { Request, onRequest } from "firebase-functions/v2/https";
 import { Flight, Root } from "../types/flights";
 import { logger } from "firebase-functions";
+import { getDatabase, ref, set, get, child, Database } from "firebase/database";
+import { FirebaseApp, initializeApp } from "firebase/app";
+import firebase_config from "./credentials";
 var Amadeus = require("amadeus");
+import { setGlobalOptions } from "firebase-functions/v2";
+
+setGlobalOptions({ region: "europe-west1" });
 
 const get_params = (req: Request, name: string) => req.query[name];
 const is_null = (value: any) =>
@@ -24,6 +30,32 @@ export const helloWorld = onRequest(async (request, response) => {
     response.status(400).send("Bad request");
     return;
   }
+  const get_doc_name = () =>
+    "flights/".concat(
+      origin_location + "_" + destination_location + "_" + departure_date
+    );
+
+  let app: FirebaseApp | null, db: Database | null;
+
+  try {
+    app = initializeApp(firebase_config);
+    db = getDatabase(
+      app,
+      "https://wanderlast-df182-default-rtdb.europe-west1.firebasedatabase.app"
+    );
+    const flight_cache = await get(child(ref(db), get_doc_name()));
+
+    if (flight_cache.exists()) {
+      response.send(flight_cache.val());
+      return;
+    }
+  } catch (error) {
+    app = null;
+    db = null;
+    logger.error(error);
+    logger.error("Not using Firestore cache");
+  }
+
   const amadeus = new Amadeus({
     clientId: process.env.AMADEUS_API_KEY,
     clientSecret: process.env.AMADEUS_API_SECRET,
@@ -43,8 +75,8 @@ export const helloWorld = onRequest(async (request, response) => {
     const final_result: Flight[] = result_raw.data.map((flight) => {
       return {
         price: {
-            price: flight.price.total,
-            currency: flight.price.currency
+          price: flight.price.total,
+          currency: flight.price.currency,
         },
         segments: flight.itineraries
           .map((itinerary) =>
@@ -58,6 +90,17 @@ export const helloWorld = onRequest(async (request, response) => {
           .flat(),
       };
     });
+    if (db != null) {
+      await set(
+        ref(
+          db,
+          "flights/".concat(
+            origin_location + "_" + destination_location + "_" + departure_date
+          )
+        ),
+        final_result
+      );
+    }
     response.send(final_result);
   } catch (error) {
     logger.error(error);
