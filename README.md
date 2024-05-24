@@ -5,3 +5,5 @@ Collection of API used by Wanderlast to retrieve informations and accelerate res
 Put API keys inside env.example file and rename it in .env.
 
 Change also project-id in .firebaserc if you need.
+
+Put your firebase config in credentials.ts inside src/
