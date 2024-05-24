@@ -1,68 +1,72 @@
-import { Request, onRequest } from "firebase-functions/v2/https";
-import { Flight, Root } from "../types/flights";
-import { logger } from "firebase-functions";
-import { getDatabase, ref, set, get, child, Database } from "firebase/database";
-import { FirebaseApp, initializeApp } from "firebase/app";
+import {CallableRequest, HttpsError, onCall} from "firebase-functions/v2/https";
+import {Flight, Root} from "../types/flights";
+import {logger} from "firebase-functions";
+import {
+  getDatabase,
+  ref,
+  set,
+  get,
+  child,
+  Database,
+} from "firebase/database";
+import {initializeApp} from "firebase/app";
 import firebase_config from "./credentials";
-var Amadeus = require("amadeus");
-import { setGlobalOptions } from "firebase-functions/v2";
+const Amadeus = require("amadeus");
 
-setGlobalOptions({ region: "europe-west1" });
-
-const get_params = (req: Request, name: string) => req.query[name];
+const get_params = (req: CallableRequest, name: string) => req.data[name];
 const is_null = (value: any) =>
   value == "" || value == null || value == undefined;
 
-export const helloWorld = onRequest(async (request, response) => {
-  const origin_location = get_params(request, "origin");
-  const destination_location = get_params(request, "destination");
-  const departure_date = get_params(request, "departure");
-  const adults_num = get_params(request, "adults");
-  const children_num = get_params(request, "children") || 0;
-  const infants_num = get_params(request, "infants") || 0;
+const app = initializeApp(firebase_config);
 
-  if (
-    is_null(origin_location) ||
-    is_null(destination_location) ||
-    is_null(departure_date) ||
-    is_null(adults_num)
-  ) {
-    response.status(400).send("Bad request");
-    return;
-  }
-  const get_doc_name = () =>
-    "flights/".concat(
-      origin_location + "_" + destination_location + "_" + departure_date
-    );
+export const get_flights = onCall(
+  {timeoutSeconds: 1200, region: ["europe-west1"], cors: true},
+  async (request: CallableRequest) => {
+    const origin_location = get_params(request, "origin");
+    const destination_location = get_params(request, "destination");
+    const departure_date = get_params(request, "departure");
+    const adults_num = get_params(request, "adults");
+    const children_num = get_params(request, "children") || 0;
+    const infants_num = get_params(request, "infants") || 0;
 
-  let app: FirebaseApp | null, db: Database | null;
-
-  try {
-    app = initializeApp(firebase_config);
-    db = getDatabase(
-      app,
-      "https://wanderlast-df182-default-rtdb.europe-west1.firebasedatabase.app"
-    );
-    const flight_cache = await get(child(ref(db), get_doc_name()));
-
-    if (flight_cache.exists()) {
-      response.send(flight_cache.val());
-      return;
+    if (
+      is_null(origin_location) ||
+      is_null(destination_location) ||
+      is_null(departure_date) ||
+      is_null(adults_num)
+    ) {
+      throw new HttpsError("invalid-argument", "Missing parameters");
     }
-  } catch (error) {
-    app = null;
-    db = null;
-    logger.error(error);
-    logger.error("Not using Firestore cache");
-  }
+    const get_doc_name = () =>
+      "flights/".concat(
+        origin_location + "_" + destination_location + "_" + departure_date
+      );
 
-  const amadeus = new Amadeus({
-    clientId: process.env.AMADEUS_API_KEY,
-    clientSecret: process.env.AMADEUS_API_SECRET,
-  });
+    let db: Database | null;
 
-  try {
-    const result_raw: Root = await amadeus.shopping.flightOffersSearch.get({
+    try {
+      db = getDatabase(
+        app,
+        "https://wanderlast-df182-default-rtdb.europe-west1.firebasedatabase.app"
+      );
+      const flight_cache = await get(child(ref(db), get_doc_name()));
+
+      if (flight_cache.exists()) {
+        return flight_cache.val();
+      }
+    } catch (error) {
+      db = null;
+      logger.error(error);
+    }
+
+    const amadeus = new Amadeus({
+      clientId: process.env.AMADEUS_API_KEY,
+      clientSecret: process.env.AMADEUS_API_SECRET,
+    });
+
+    try {
+      const result_raw: Root =
+    await amadeus.shopping.flightOffersSearch.get({
       originLocationCode: origin_location,
       destinationLocationCode: destination_location,
       departureDate: departure_date,
@@ -72,38 +76,43 @@ export const helloWorld = onRequest(async (request, response) => {
       max: 10,
       nonStop: "false",
     });
-    const final_result: Flight[] = result_raw.data.map((flight) => {
-      return {
-        price: {
-          price: flight.price.total,
-          currency: flight.price.currency,
-        },
-        segments: flight.itineraries
-          .map((itinerary) =>
-            itinerary.segments.map((segment) => {
-              return {
-                departure: segment.departure,
-                arrival: segment.arrival,
-              };
-            })
-          )
-          .flat(),
-      };
-    });
-    if (db != null) {
-      await set(
-        ref(
-          db,
-          "flights/".concat(
-            origin_location + "_" + destination_location + "_" + departure_date
-          )
-        ),
-        final_result
-      );
+      const final_result: Flight[] = result_raw.data.map((flight) => {
+        return {
+          price: {
+            price: flight.price.total,
+            currency: flight.price.currency,
+          },
+          segments: flight.itineraries
+            .map((itinerary) =>
+              itinerary.segments.map((segment) => {
+                return {
+                  departure: segment.departure,
+                  arrival: segment.arrival,
+                };
+              })
+            )
+            .flat(),
+        };
+      });
+      if (db != null) {
+        await set(
+          ref(
+            db,
+            "flights/".concat(
+              origin_location +
+                "_" +
+                destination_location +
+                "_" +
+                departure_date
+            )
+          ),
+          final_result
+        );
+      }
+      return final_result;
+    } catch (error) {
+      logger.error(error);
+      throw new HttpsError("internal", "Internal server error during request");
     }
-    response.send(final_result);
-  } catch (error) {
-    logger.error(error);
-    response.sendStatus(500);
   }
-});
+);
